@@ -119,24 +119,48 @@ $(function () {
       if (!valid) return;
 
       // ======= AJAX LOGIN =======
+      // Include CSRF token from hidden field so server-side validation succeeds
+      const csrfToken = $('#loginForm').find('input[name="csrf_token"]').val() || $('input[name="csrf_token"]').val() || '';
       $.ajax({
         url: 'misc/login_function.php',
         type: 'POST',
-        data: { email: email, password: password },
+        data: { email: email, password: password, csrf_token: csrfToken },
         success: function (response) {
-          // Remove HTML tags in response
-          let msg = $('<div>').html(response).text();
-          if (msg.includes('Login successful')) {
-            alert('Login successful!');
+          // Try to parse JSON; fallback to text
+          let res;
+          try {
+            res = (typeof response === 'object') ? response : JSON.parse(response);
+          } catch (e) {
+            res = { success: false, message: $('<div>').html(response).text() };
+          }
+
+          // Clear previous field errors
+          $('#loginEmailError').text('');
+          $('#loginPasswordError').text('');
+
+          if (res.success) {
+            // Successful login — switch UI and reload
             $('#authModal').modal('hide');
             $('#loginForm')[0].reset();
-            location.reload(); // optional: reload page to show logged-in state
+            location.reload();
           } else {
-            alert(msg);
+            const msg = res.message || 'Invalid credentials';
+            // Map common messages to fields; prefer non-blocking inline errors
+            if (/email/i.test(msg)) {
+              $('#loginEmailError').text(msg);
+            }
+            if (/password|credential|invalid/i.test(msg)) {
+              $('#loginPasswordError').text(msg);
+            }
+            // If message doesn't match, show it under both fields
+            if (!(/email/i.test(msg) || /password|credential|invalid/i.test(msg))) {
+              $('#loginEmailError').text(msg);
+              $('#loginPasswordError').text(msg);
+            }
           }
         },
         error: function () {
-          alert('An error occurred. Please try again.');
+          $('#loginPasswordError').text('An error occurred. Please try again.');
         }
       });
     });
@@ -195,6 +219,8 @@ $(function () {
 
       if (valid) {
         // AJAX signup
+        // Include CSRF token from hidden field for server validation
+        const signupCsrf = $('#signupForm').find('input[name="csrf_token"]').val() || $('input[name="csrf_token"]').val() || '';
         $.ajax({
           url: 'misc/signup_function.php',
           type: 'POST',
@@ -204,21 +230,48 @@ $(function () {
             address: address,
             email: email,
             number: contact,
-            password: password
+            password: password,
+            csrf_token: signupCsrf
           },
           success: function (response) {
-            let msg = $('<div>').html(response).text();
-            if (msg.includes('Account created successfully')) {
-              alert('Account created successfully!');
-              $('#authModal').modal('hide');
+            // Try to parse JSON; fallback to text
+            let res;
+            try {
+              res = (typeof response === 'object') ? response : JSON.parse(response);
+            } catch (e) {
+              res = { success: false, message: $('<div>').html(response).text() };
+            }
+
+            if (res.success) {
+              // show inline success (or switch to login)
               $('#signupForm')[0].reset();
-              location.reload(); // optional: reload page to reflect login state
+              // Optionally show a brief inline success message
+              $('#signupEmailError').text('');
+              $('#contactError').text('');
+              // switch to login form and show a small success notice
+              $('#openLogin').click();
+              // show a non-blocking message in login modal
+              const loginMsg = $('#loginMessage');
+              if (loginMsg.length) {
+                loginMsg.removeClass('d-none').addClass('alert alert-success').text(res.message || 'Account created successfully');
+              } else {
+                alert(res.message || 'Account created successfully');
+              }
             } else {
-              alert(msg);
+              // Map specific messages to inline fields
+              const msg = res.message || 'Error creating account';
+              if (/email/i.test(msg)) {
+                $('#signupEmailError').text(msg);
+              } else if (/contact/i.test(msg) || /number/i.test(msg)) {
+                $('#contactError').text(msg);
+              } else {
+                // fallback: show in a general place (signupEmailError)
+                $('#signupEmailError').text(msg);
+              }
             }
           },
           error: function () {
-            alert('An error occurred. Please try again.');
+            $('#signupEmailError').text('An error occurred. Please try again.');
           }
         });
       }

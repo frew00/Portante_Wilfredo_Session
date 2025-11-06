@@ -1,42 +1,31 @@
 <?php
-include 'db.php';
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/security/SessionManager.php';
+require_once __DIR__ . '/security/Authentication.php';
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    // Verify CSRF token
+    $sessionManager = SessionManager::getInstance();
+    if (!isset($_POST['csrf_token'])) {
+        echo json_encode(['success' => false, 'message' => 'Missing CSRF token']);
+        exit;
+    }
+    if (!$sessionManager->validateCsrfToken($_POST['csrf_token'])) {
+        echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+        exit;
+    }
+
     $email = filter_input(INPUT_POST, "email", FILTER_SANITIZE_EMAIL);
     $password = filter_input(INPUT_POST, "password", FILTER_SANITIZE_SPECIAL_CHARS);
 
     if (empty($email) || empty($password)) {
-        echo "Please fill in both fields.";
+        echo json_encode(['success' => false, 'message' => 'Please fill in both fields']);
         exit;
     }
 
-    $query = "SELECT * FROM users WHERE email = ? LIMIT 1";
-    $stmt = mysqli_prepare($conn, $query);
-    mysqli_stmt_bind_param($stmt, "s", $email);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-
-    if ($user = mysqli_fetch_assoc($result)) {
-        if (password_verify($password, $user['password'])) {
-            //Starts the session for the user.
-            session_start();
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['user_name'] = $user['name'];
-            $_SESSION['user_email'] = $user['email'];
-
-            $update = "UPDATE users SET last_session = NOW() WHERE id = ?";
-            $stmt2 = mysqli_prepare($conn, $update);
-            mysqli_stmt_bind_param($stmt2, "i", $user['id']);
-            mysqli_stmt_execute($stmt2);
-
-            echo "Login successful!";
-        } else {
-            echo "Incorrect password.";
-        }
-    } else {
-        echo "No account found with that email.";
-    }
-
-    mysqli_stmt_close($stmt);
-    mysqli_close($conn);
+    $auth = new Authentication($conn);
+    $result = $auth->login($email, $password);
+    
+    echo json_encode($result);
+    exit;
 }

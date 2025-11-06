@@ -1,12 +1,8 @@
 <?php
-include 'db.php';
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/security/SessionManager.php';
 
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-
+$sessionManager = SessionManager::getInstance();
 $usr_id = $_SESSION['user_id'] ?? 0;
 
 // Add to cart function

@@ -1,6 +1,10 @@
 <?php
-include 'misc/headernavfooter.php';
-include 'misc/signup_function.php';
+require_once 'misc/headernavfooter.php';
+require_once 'misc/signup_function.php';
+require_once 'misc/security/SessionManager.php';
+
+$sessionManager = SessionManager::getInstance();
+$csrfToken = $sessionManager->getCsrfToken();
 ?>
 
 <div class="modal fade" id="authModal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
@@ -15,6 +19,7 @@ include 'misc/signup_function.php';
         <!-- ================= LOGIN FORM ================= -->
         <div id="loginFormContainer">
           <form id="loginForm" novalidate>
+            <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
             <div class="mb-3">
               <label for="loginEmail" class="form-label">Email</label>
               <div class="input-inner">
@@ -34,6 +39,7 @@ include 'misc/signup_function.php';
               <div id="loginPasswordError" class="error-msg"></div>
             </div>
 
+            <div id="loginMessage" class="alert d-none"></div>
             <button type="submit" class="btn modal-btn w-100">Login</button>
             <div class="text-center mt-3">
               <a href="#" id="openSignup" class="modal-link">Don't have an Account? Sign up.</a>
@@ -44,6 +50,7 @@ include 'misc/signup_function.php';
         <!-- ================= SIGN UP FORM ================= -->
         <div id="signupFormContainer" class="d-none">
           <form id="signupForm" method="POST" novalidate>
+            <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
             <div class="row g-2">
               <div class="col-md-6">
                 <label class="form-label">First Name</label>

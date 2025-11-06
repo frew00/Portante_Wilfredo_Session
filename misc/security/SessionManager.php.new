@@ -1,0 +1,139 @@
+<?php
+
+class SessionManager {
+    private static $instance = null;
+    private const SESSION_LIFETIME = 1800; // 30 minutes
+    private const RATE_LIMIT_ATTEMPTS = 5;
+    private const RATE_LIMIT_TIME = 300; // 5 minutes
+
+    private function __construct() {
+        if (session_status() === PHP_SESSION_NONE) {
+            // Determine if the current connection is HTTPS. For local HTTP development
+            // we must NOT force the secure flag or browsers won't send the session cookie.
+            $isSecure = $this->isHttps() ? 1 : 0;
+
+            if (!headers_sent()) {
+                ini_set('session.cookie_httponly', 1);
+                ini_set('session.cookie_secure', $isSecure);
+                ini_set('session.use_only_cookies', 1);
+                if (PHP_VERSION_ID >= 70300) {
+                    ini_set('session.cookie_samesite', 'Lax');
+                }
+                session_start();
+            }
+        }
+
+        if (!isset($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+
+        if (!isset($_SESSION['last_activity'])) {
+            $_SESSION['last_activity'] = time();
+        }
+
+        $this->checkSessionExpiration();
+    }
+
+    public static function getInstance(): SessionManager {
+        if (self::$instance === null) {
+            self::$instance = new SessionManager();
+        }
+        return self::$instance;
+    }
+
+    public function checkSessionExpiration(): void {
+        if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > self::SESSION_LIFETIME)) {
+            $this->destroySession();
+        }
+        $_SESSION['last_activity'] = time();
+    }
+
+    public function getCsrfToken(): string {
+        return $_SESSION['csrf_token'] ?? '';
+    }
+
+    public function validateCsrfToken(string $token): bool {
+        $stored = $_SESSION['csrf_token'] ?? '';
+        if (empty($stored) || empty($token)) {
+            return false;
+        }
+        return hash_equals($stored, $token);
+    }
+
+    public function setUserData(array $userData): void {
+        // Be defensive: only set session keys when the corresponding userData is present
+        if (isset($userData['id'])) {
+            $_SESSION['user_id'] = $userData['id'];
+        }
+        if (isset($userData['email'])) {
+            $_SESSION['user_email'] = $userData['email'];
+        }
+        // default role to 'user' when not provided
+        $_SESSION['user_role'] = $userData['role'] ?? ($_SESSION['user_role'] ?? 'user');
+
+        $_SESSION['last_activity'] = time();
+
+        // If a display name is passed in the userData, set it too for backwards compatibility
+        if (!empty($userData['name'])) {
+            $_SESSION['user_name'] = $userData['name'];
+        }
+    }
+
+    // Accept optional display name and store it in session if provided
+    public function setUserDisplayName(?string $name): void {
+        if ($name !== null && $name !== '') {
+            $_SESSION['user_name'] = $name;
+        }
+    }
+
+    public function isLoggedIn(): bool {
+        return isset($_SESSION['user_id']);
+    }
+
+    public function getUserId() {
+        return $_SESSION['user_id'] ?? null;
+    }
+
+    public function checkRateLimit(string $action): bool {
+        $key = "rate_limit_{$action}_" . ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+
+        if (!isset($_SESSION[$key])) {
+            $_SESSION[$key] = ['attempts' => 0, 'timestamp' => time()];
+        }
+
+        if (time() - $_SESSION[$key]['timestamp'] > self::RATE_LIMIT_TIME) {
+            $_SESSION[$key] = ['attempts' => 1, 'timestamp' => time()];
+            return true;
+        }
+
+        if ($_SESSION[$key]['attempts'] >= self::RATE_LIMIT_ATTEMPTS) {
+            return false;
+        }
+
+        $_SESSION[$key]['attempts']++;
+        return true;
+    }
+
+    public function destroySession(): void {
+        session_unset();
+        session_destroy();
+        // Clear the session cookie using same secure/httponly flags used at start
+        $isSecure = $this->isHttps();
+        setcookie(session_name(), '', time() - 3600, '/', '', $isSecure, true);
+    }
+
+    // Detect whether current request is using HTTPS (covers common proxies)
+    private function isHttps(): bool {
+        if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (!empty($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)) {
+            return true;
+        }
+        if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+            return true;
+        }
+        return false;
+    }
+
+    public function regenerateSession(): void {
+        session_regenerate_id(true);
+    }
+}

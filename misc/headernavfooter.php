@@ -1,7 +1,6 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/security/SessionManager.php';
+$sessionManager = SessionManager::getInstance();
 
 
 function navbarcall()
@@ -18,9 +17,11 @@ function navbarcall()
     }
     else
     {
-        $name = $_SESSION['user_name'];
+        // Use stored user_name if available, otherwise fallback to email or a generic label
+        $name = $_SESSION['user_name'] ?? ($_SESSION['user_email'] ?? 'User');
+        $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $logSignHTML = <<<HTML
-            <li><p class=" dropdown-item fw-bold">Hi, $name!</p></li>
+            <li><p class=" dropdown-item fw-bold">Hi, $safeName!</p></li>
             <hr>
             <li><a class="dropdown-item" href="#" id="logoutButton">Logout</a></li>
         HTML;
